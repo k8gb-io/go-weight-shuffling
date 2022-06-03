@@ -1,0 +1,8 @@
+# Ignore everything
+*
+
+# But inject license into these files...
+!Makefile
+!*.go
+!.golic.yaml
+!/.github/workflows/*.yaml

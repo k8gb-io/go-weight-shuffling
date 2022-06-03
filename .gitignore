@@ -1,0 +1,25 @@
+# Ignore everything
+*
+
+# But not these files...
+!/.gitignore
+
+# GO
+!*.go
+!go.sum
+!go.mod
+
+# LINT
+!.golangci.toml
+!.golic.yaml
+!.licignore
+
+# BUILD
+!/.github/workflows/*.yaml
+
+!README.md
+!LICENSE
+!Makefile
+
+# ...even if they are in subdirectories
+!*/
