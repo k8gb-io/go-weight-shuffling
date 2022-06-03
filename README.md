@@ -6,8 +6,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/k8gb-io/go-weight-shuffling)](https://goreportcard.com/report/github.com/k8gb-io/go-weight-shuffling?branch=main)
 
 
-This library provides a Weight Shuffling support function which chieves both performance and simplicity. The functionality
-is suitable for weight round robin in a distributed environment.
+This library provides a Weight Shuffling support function which achieves both performance and simplicity. The functionality
+is suitable for weight round-robin in a distributed environments.
 
 For detailed information about the concept, you should take a look at the following resources:
 - [CDF x PDF](https://www.statology.org/cdf-vs-pdf/)
@@ -90,10 +90,10 @@ occur more often at the 01 position that has the highest probability in the PDF.
  3. [122 68 235 575] 
 ```
 
-The example matrix was created by 1000x hitting the list of IP adresses with help of WRR.
+The example matrix was created by 1000x hitting the list of IP addresses with help of WRR.
 If we map the indexes to a slice with IP addresses (or groups of IP addresses) the IP at
 zero index (`10.0.0.1`) is used 289x on the first position returned by DNS server (e.g: `[10.0.0.1, 10.1.0.1, 10.2.0.1, 10.3.0.1]`).
-Also 298x used on the second position (e.g: `[10.1.0.1, 10.0.0.1, 10.3.0.1, 10.2.0.1]`).
+However, 298x used on the second position (e.g: `[10.1.0.1, 10.0.0.1, 10.3.0.1, 10.2.0.1]`).
 
 The address (`10.3.0.1`) has only 10% probability of to be chosen. It occurs only 110x (cca 10%) on the zero position
 while 575x on the last position.
