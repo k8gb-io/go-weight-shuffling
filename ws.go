@@ -68,13 +68,6 @@ func (w *WS) PickVector() (indexes []int) {
 
 		balance -= pdf[index]
 		pdf[index] = 0
-
-		// Summary of new pdf must be 100%. Need to add missing percentage
-		for q, v := range pdf {
-			if v != 0 {
-				pdf[q] = v
-			}
-		}
 	}
 	return indexes
 }

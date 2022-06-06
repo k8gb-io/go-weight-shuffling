@@ -117,7 +117,7 @@ sorted like this: `[10.2.0.1,10.1.0.1,10.0.0.1,10.3.0.1]`.  This is the result m
 
 #### 50% / 50%
 the last case is a bit redundant, although very explanatory. Let's say we have `pdf={50,50}`.
-The generated wil look like following:
+The generated sample will look like following:
 ```
 [0 1]
 [1 0]
