@@ -13,9 +13,15 @@ name: Release
 
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - '*_test.go'
+      - '/.github/workflows/*.yaml'
     branches:
       - main
-
+  workflow_dispatch:
+    branches:
+      - main
 jobs:
   tag-build-publish:
     name: Tag
