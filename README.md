@@ -31,7 +31,7 @@ go get github.com/k8gb-io/go-weight-shuffling
 // pdf requires to be 100% in total.  
 pdf := []int{30, 40, 20, 10}
 // handle error in real code
-ws, _ := NewWS(pdf)
+ws, _ := gows.NewWS(pdf)
 // the index is selected from the probability determined by the pdf 
 index := ws.Pick()
 ```
@@ -42,15 +42,15 @@ while it will return 0 or 2 in about 10 out of 100 cases.
 
 **The only condition is that the sum of all values in the PDF is always equal to 100!**
 
-## PickVector() Usage
+## PickVector(Settings) Usage
 
 ```go
 // pdf requires to be 100% in total.  
 pdf := []int{30, 40, 20, 10}
 // handle error in real code
-ws, _ := NewWS(pdf)
+ws, _ := gows.NewWS(pdf)
 // the result will be slices of the index, which will be "probably" sorted by probability
-indexes := wrr.PickVector()
+indexes := wrr.PickVector(gows.KeepIndexesForZeroPDF)
 ```
 
 A bit more complex case is when you need to shuffle the indexes in the array to match the PDF instead of one element.
@@ -65,6 +65,17 @@ vector. For example, for `PDF={30,40,20,10}` the result will be like this:
 ```
 the function returns an index slice such that index0 will be represented in the zero position in about 30% of cases,
 index1 will be in the first position in about 40% of cases, etc.
+
+### PickVector settings argument
+The Settings argument defines how the PickVector function will return indexes. Imagine you have 
+a PDF for three different parts and you set one of them to 0 (just turn it off, because the 
+probability of this index will be 0). The solution is not universal, each use-case requires 
+different behavior. Currently we define two versions of the behavior.
+
+- `KeepIndexesForZeroPDF` keeps indexes for zero pdf elements; e.g: for `pdf=[0,50,50,0,0,0]` returns `[1,2,0,3,4,5]` or `[2,1,0,3,4,5]`
+- `IgnoreIndexesForZeroPDF` filter indexes for zero pdf elements; e.g: for `pdf=[0,50,50,0,0,0]` returns `[1,2]` or `[2,1]`
+
+Translated with www.DeepL.com/Translator (free version)
 
 ## Examples
 This library is ideal for Weight RoundRobin. Imagine you need to balance these addresses (can be applied to whole groups

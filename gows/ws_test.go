@@ -37,6 +37,12 @@ func TestInit(t *testing.T) {
 		{"hundred", []int{0, 0, 100}, true},
 		{"hundred", []int{100, 0}, true},
 		{"hundred", []int{100}, true},
+		{"50 50 0", []int{50, 50, 0}, true},
+		{"50 50 0 0", []int{50, 50, 0, 0}, true},
+		{"50 0 50 0", []int{50, 0, 50, 0}, true},
+		{"0 50 0 50", []int{0, 50, 0, 50}, true},
+		{"50 0 0 50", []int{50, 0, 0, 50}, true},
+		{"0 0 50 0 0 50 0 0", []int{0, 0, 50, 0, 0, 50, 0, 0}, true},
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
@@ -67,6 +73,7 @@ func TestPick(t *testing.T) {
 		{"multiple zeros", []int{100, 0, 0}, 0},
 		{"multiple zeros", []int{0, 100, 0}, 0},
 		{"multiple zeros", []int{0, 0, 100}, 0},
+		{"50 50 0", []int{50, 50, 0}, 20},
 	}
 
 	for _, test := range tests {
@@ -104,6 +111,12 @@ func TestPickVector(t *testing.T) {
 		{"multiple zeros", []int{0, 100, 0}, 0},
 		{"multiple zeros", []int{0, 0, 100}, 0},
 		{"multiple zeros", []int{0, 0, 0, 100, 0, 0}, 0},
+		{"50 50 0", []int{50, 50, 0}, 5},
+		{"50 50 0 0", []int{50, 50, 0, 0}, 5},
+		{"50 0 50 0", []int{50, 0, 50, 0}, 5},
+		{"0 50 0 50", []int{0, 50, 0, 50}, 5},
+		{"50 0 0 50", []int{50, 0, 0, 50}, 5},
+		{"0 0 50 0 0 50 0 0", []int{0, 0, 50, 0, 0, 50, 0, 0}, 5},
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
@@ -117,7 +130,7 @@ func TestPickVector(t *testing.T) {
 
 			for i := 0; i < n; i++ {
 
-				indexes := wrr.PickVector()
+				indexes := wrr.PickVector(KeepIndexesForZeroPDF)
 				for _, v := range indexes {
 					assert.True(t, v >= 0 && v < len(test.pdf), "Pick returned index out of range")
 				}
@@ -138,6 +151,61 @@ func TestPickVector(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSettings(t *testing.T) {
+	tests := []struct {
+		name                string
+		pdf                 []int
+		expectedIndexValues []int
+		settings            Settings
+	}{
+		{"happy distribution -Ignore", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, IgnoreIndexesForZeroPDF},
+		{"happy distribution - Keep", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, KeepIndexesForZeroPDF},
+
+		{"one element  - Ignore", []int{100}, []int{0}, 0},
+		{"one element  - Keep", []int{100}, []int{0}, 0},
+
+		{"one zero - Ignore", []int{100, 0}, []int{0}, IgnoreIndexesForZeroPDF},
+		{"one zero - Keep ", []int{100, 0}, []int{0, 1}, KeepIndexesForZeroPDF},
+		{"0 100 0 - Ignore", []int{0, 100, 0}, []int{1}, IgnoreIndexesForZeroPDF},
+		{"0 100 0 - Keep ", []int{0, 100, 0}, []int{0, 1, 2}, KeepIndexesForZeroPDF},
+
+		{"0 50 0 50 - Ignore ", []int{0, 50, 0, 50}, []int{1, 3}, IgnoreIndexesForZeroPDF},
+		{"0 50 0 50 - Keep ", []int{0, 50, 0, 50}, []int{0, 1, 2, 3}, KeepIndexesForZeroPDF},
+
+		{"0 0 50 0 0 50 0 0 - Ignore", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, IgnoreIndexesForZeroPDF},
+		{"0 0 50 0 0 50 0 0 - Keep", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, KeepIndexesForZeroPDF},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wrr, err := NewWS(test.pdf)
+			require.NoError(t, err)
+			for x := 0; x < 2; x++ {
+				indexes := wrr.PickVector(test.settings)
+				assert.True(t, containsValues(indexes, test.expectedIndexValues), "%v %v", indexes, test.expectedIndexValues)
+			}
+		})
+	}
+}
+
+// slice a contains same values as defined in slice b.
+// the values could be in different order but must be present in both slices
+func containsValues(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[int]int, len(a))
+	for i := 0; i < len(a); i++ {
+		m[a[i]]++
+		m[b[i]]++
+	}
+	for _, v := range m {
+		if v != 2 {
+			return false
+		}
+	}
+	return true
 }
 
 func sum(result []int) (sum int) {
