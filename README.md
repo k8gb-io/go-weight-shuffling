@@ -75,8 +75,6 @@ different behavior. Currently we define two versions of the behavior.
 - `KeepIndexesForZeroPDF` keeps indexes for zero pdf elements; e.g: for `pdf=[0,50,50,0,0,0]` returns `[1,2,0,3,4,5]` or `[2,1,0,3,4,5]`
 - `IgnoreIndexesForZeroPDF` filter indexes for zero pdf elements; e.g: for `pdf=[0,50,50,0,0,0]` returns `[1,2]` or `[2,1]`
 
-Translated with www.DeepL.com/Translator (free version)
-
 ## Examples
 This library is ideal for Weight RoundRobin. Imagine you need to balance these addresses (can be applied to whole groups
 of addresses):
