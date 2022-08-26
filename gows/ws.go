@@ -121,17 +121,37 @@ func (w *WS) getCDF(pdf touples) (cdf touples) {
 }
 
 func (w *WS) indexes(settings Settings, calculatedIndexes []int) (indexes []int) {
-	if settings == IgnoreIndexesForZeroPDF {
-		for _, v := range calculatedIndexes {
-			indexes = append(indexes, w.filteredPDFFromZeroElements[v].index)
+	if len(calculatedIndexes) == len(w.pdf) {
+		return calculatedIndexes
+	}
+
+	indexes = w.toPDFIndexes(calculatedIndexes)
+
+	switch settings {
+	case IgnoreIndexesForZeroPDF:
+		return indexes
+	case KeepIndexesForZeroPDF:
+		for i := 0; i < len(w.pdf); i++ {
+			apnd := true
+			for _, v := range calculatedIndexes {
+				if w.filteredPDFFromZeroElements[v].index == i {
+					apnd = false
+					break
+				}
+			}
+			if apnd {
+				indexes = append(indexes, i)
+			}
 		}
 		return indexes
+	default:
+		return indexes
 	}
-	for i := 0; i < len(w.pdf); i++ {
-		indexes = append(indexes, i)
-	}
-	for i, v := range calculatedIndexes {
-		indexes[i], indexes[w.filteredPDFFromZeroElements[v].index] = indexes[w.filteredPDFFromZeroElements[v].index], indexes[i]
+}
+
+func (w *WS) toPDFIndexes(calculatedIndexes []int) (indexes []int) {
+	for _, v := range calculatedIndexes {
+		indexes = append(indexes, w.filteredPDFFromZeroElements[v].index)
 	}
 	return indexes
 }
