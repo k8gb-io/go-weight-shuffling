@@ -176,6 +176,7 @@ func TestSettings(t *testing.T) {
 
 		{"0 0 50 0 0 50 0 0 - Ignore", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, IgnoreIndexesForZeroPDF},
 		{"0 0 50 0 0 50 0 0 - Keep", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, KeepIndexesForZeroPDF},
+		{"invalid strategy", []int{100, 0}, []int{}, 5},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -187,6 +188,191 @@ func TestSettings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsShuffling(t *testing.T) {
+	tests := []struct {
+		name              string
+		pdf               []int
+		same              [][]int
+		maxDiffPercentage int
+		settings          Settings
+	}{
+		{"50-50",
+			[]int{50, 50},
+			[][]int{{0, 1}, {1, 0}},
+			10,
+			KeepIndexesForZeroPDF,
+		},
+		{"33-33-34",
+			[]int{33, 33, 34},
+			[][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 1, 0}, {2, 0, 1}},
+			25,
+			KeepIndexesForZeroPDF,
+		},
+		{"0-100",
+			[]int{0, 100},
+			[][]int{{1, 0}},
+			0,
+			KeepIndexesForZeroPDF,
+		},
+		{"100-0-0",
+			[]int{100, 0, 0},
+			[][]int{{0, 1, 2}},
+			0,
+			KeepIndexesForZeroPDF,
+		},
+		{"0-0-100",
+			[]int{0, 0, 100},
+			[][]int{{2, 0, 1}},
+			0,
+			KeepIndexesForZeroPDF,
+		},
+		{"0-0-100-0",
+			[]int{0, 0, 100, 0},
+			[][]int{{2, 0, 1, 3}},
+			0,
+			KeepIndexesForZeroPDF,
+		},
+		{"0-50-50",
+			[]int{0, 50, 50},
+			[][]int{{2, 1, 0}, {1, 2, 0}},
+			10,
+			KeepIndexesForZeroPDF,
+		},
+		{"50-0-50",
+			[]int{50, 0, 50},
+			[][]int{{2, 0, 1}, {0, 2, 1}},
+			10,
+			KeepIndexesForZeroPDF,
+		},
+		{"50-50-0",
+			[]int{50, 50, 0},
+			[][]int{{0, 1, 2}, {1, 0, 2}},
+			10,
+			KeepIndexesForZeroPDF,
+		},
+		{"0-50-0-50-0",
+			[]int{0, 50, 0, 50, 0},
+			[][]int{{1, 3, 0, 2, 4}, {3, 1, 0, 2, 4}},
+			10,
+			KeepIndexesForZeroPDF,
+		},
+		{"50-50-0-50-0",
+			[]int{33, 33, 0, 34, 0},
+			[][]int{{1, 3, 0, 2, 4}, {1, 0, 3, 2, 4}, {0, 1, 3, 2, 4}, {0, 3, 1, 2, 4}, {3, 0, 1, 2, 4}, {3, 1, 0, 2, 4}},
+			25,
+			KeepIndexesForZeroPDF,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wrr, err := NewWS(test.pdf)
+			require.NoError(t, err)
+			counters := make([]int, len(test.same))
+			for i := 0; i < 1000; i++ {
+				succeed := false
+				indexes := wrr.PickVector(test.settings)
+				for c, s := range test.same {
+					if same(s, indexes) {
+						counters[c]++
+						succeed = true
+					}
+				}
+				if succeed {
+					continue
+				}
+				t.Fatal("invalid indexes", indexes)
+			}
+			assert.True(t, nearlyEqual(counters, test.maxDiffPercentage),
+				" %v are not nearly equal (expecting max %d%% diff)",
+				counters, test.maxDiffPercentage)
+		})
+	}
+}
+
+func TestIsShufflingAsymetric(t *testing.T) {
+	const n = 1000
+	tests := []struct {
+		name               string
+		pdf                []int
+		expectedHits       []int
+		maxDiffPercentages int
+		settings           Settings
+	}{
+		{
+			"10-90",
+			[]int{10, 90},
+			[]int{100, 900},
+			3,
+			KeepIndexesForZeroPDF,
+		},
+		{
+			"90-5-5",
+			[]int{90, 5, 5},
+			[]int{900, 50, 50},
+			3,
+			KeepIndexesForZeroPDF,
+		},
+		{
+			"30-10-60",
+			[]int{30, 10, 60},
+			[]int{300, 100, 600},
+			3,
+			IgnoreIndexesForZeroPDF,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wrr, err := NewWS(test.pdf)
+			require.NoError(t, err)
+			counters := make([]int, len(test.pdf))
+			for i := 0; i < n; i++ {
+				indexes := wrr.PickVector(test.settings)
+				counters[indexes[0]]++
+			}
+			for i, v := range counters {
+				b := closeTo(v, test.expectedHits[i], n, 5)
+				assert.True(t, b, "%d is not nearly equal (expecting max %d%% diff) ", v, test.maxDiffPercentages)
+			}
+		})
+	}
+}
+
+func closeTo(x, closeTo, max, diff int) bool {
+	n := max / 100 * diff
+	return x > closeTo-n && x < closeTo+n
+}
+
+func nearlyEqual(x []int, diff int) bool {
+	var r float64
+	for i := 0; i < len(x); i++ {
+		r += float64(x[i])
+	}
+	r = r / float64(len(x))
+	da := r * float64(100-diff) / 100
+	db := r * float64(100+diff) / 100
+	for _, v := range x {
+		if float64(v) < da {
+			return false
+		}
+		if float64(v) > db {
+			return false
+		}
+	}
+	return true
+}
+
+func same(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // slice a contains same values as defined in slice b.
