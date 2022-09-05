@@ -202,67 +202,67 @@ func TestIsShuffling(t *testing.T) {
 			[]int{50, 50},
 			[][]int{{0, 1}, {1, 0}},
 			10,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"33-33-34",
 			[]int{33, 33, 34},
 			[][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 1, 0}, {2, 0, 1}},
 			25,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"0-100",
 			[]int{0, 100},
 			[][]int{{1, 0}},
 			0,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"100-0-0",
 			[]int{100, 0, 0},
 			[][]int{{0, 1, 2}},
 			0,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"0-0-100",
 			[]int{0, 0, 100},
 			[][]int{{2, 0, 1}},
 			0,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"0-0-100-0",
 			[]int{0, 0, 100, 0},
 			[][]int{{2, 0, 1, 3}},
 			0,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"0-50-50",
 			[]int{0, 50, 50},
 			[][]int{{2, 1, 0}, {1, 2, 0}},
 			10,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"50-0-50",
 			[]int{50, 0, 50},
 			[][]int{{2, 0, 1}, {0, 2, 1}},
 			10,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"50-50-0",
 			[]int{50, 50, 0},
 			[][]int{{0, 1, 2}, {1, 0, 2}},
 			10,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"0-50-0-50-0",
 			[]int{0, 50, 0, 50, 0},
 			[][]int{{1, 3, 0, 2, 4}, {3, 1, 0, 2, 4}},
 			10,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 		{"50-50-0-50-0",
 			[]int{33, 33, 0, 34, 0},
 			[][]int{{1, 3, 0, 2, 4}, {1, 0, 3, 2, 4}, {0, 1, 3, 2, 4}, {0, 3, 1, 2, 4}, {3, 0, 1, 2, 4}, {3, 1, 0, 2, 4}},
 			25,
-			IgnoreIndexesForZeroPDF,
+			KeepIndexesForZeroPDF,
 		},
 	}
 	for _, test := range tests {
@@ -272,7 +272,7 @@ func TestIsShuffling(t *testing.T) {
 			counters := make([]int, len(test.same))
 			for i := 0; i < 1000; i++ {
 				succeed := false
-				indexes := wrr.PickVector(KeepIndexesForZeroPDF)
+				indexes := wrr.PickVector(test.settings)
 				for c, s := range test.same {
 					if same(s, indexes) {
 						counters[c]++
@@ -289,7 +289,59 @@ func TestIsShuffling(t *testing.T) {
 				counters, test.maxDiffPercentage)
 		})
 	}
+}
 
+func TestIsShufflingAsymetric(t *testing.T) {
+	const n = 1000
+	tests := []struct {
+		name               string
+		pdf                []int
+		expectedHits       []int
+		maxDiffPercentages int
+		settings           Settings
+	}{
+		{
+			"10-90",
+			[]int{10, 90},
+			[]int{100, 900},
+			3,
+			KeepIndexesForZeroPDF,
+		},
+		{
+			"90-5-5",
+			[]int{90, 5, 5},
+			[]int{900, 50, 50},
+			3,
+			KeepIndexesForZeroPDF,
+		},
+		{
+			"30-10-60",
+			[]int{30, 10, 60},
+			[]int{300, 100, 600},
+			3,
+			IgnoreIndexesForZeroPDF,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wrr, err := NewWS(test.pdf)
+			require.NoError(t, err)
+			counters := make([]int, len(test.pdf))
+			for i := 0; i < n; i++ {
+				indexes := wrr.PickVector(test.settings)
+				counters[indexes[0]]++
+			}
+			for i, v := range counters {
+				b := closeTo(v, test.expectedHits[i], n, 5)
+				assert.True(t, b, "%d is not nearly equal (expecting max %d%% diff) ", v, test.maxDiffPercentages)
+			}
+		})
+	}
+}
+
+func closeTo(x, closeTo, max, diff int) bool {
+	n := max / 100 * diff
+	return x > closeTo-n && x < closeTo+n
 }
 
 func nearlyEqual(x []int, diff int) bool {
