@@ -145,7 +145,7 @@ func (w *WS) indexes(settings Settings, calculatedIndexes []int) (indexes []int)
 		}
 		return indexes
 	default:
-		return indexes
+		return make([]int, 0)
 	}
 }
 

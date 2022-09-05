@@ -176,6 +176,7 @@ func TestSettings(t *testing.T) {
 
 		{"0 0 50 0 0 50 0 0 - Ignore", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, IgnoreIndexesForZeroPDF},
 		{"0 0 50 0 0 50 0 0 - Keep", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, KeepIndexesForZeroPDF},
+		{"invalid strategy", []int{100, 0}, []int{}, 5},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -206,7 +207,7 @@ func TestIsShuffling(t *testing.T) {
 		{"33-33-34",
 			[]int{33, 33, 34},
 			[][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 1, 0}, {2, 0, 1}},
-			20,
+			25,
 			IgnoreIndexesForZeroPDF,
 		},
 		{"0-100",
@@ -260,7 +261,7 @@ func TestIsShuffling(t *testing.T) {
 		{"50-50-0-50-0",
 			[]int{33, 33, 0, 34, 0},
 			[][]int{{1, 3, 0, 2, 4}, {1, 0, 3, 2, 4}, {0, 1, 3, 2, 4}, {0, 3, 1, 2, 4}, {3, 0, 1, 2, 4}, {3, 1, 0, 2, 4}},
-			20,
+			25,
 			IgnoreIndexesForZeroPDF,
 		},
 	}
