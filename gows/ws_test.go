@@ -22,106 +22,96 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInit(t *testing.T) {
-	tests := []struct {
-		name  string
-		pdf   []int
-		valid bool
-	}{
-		{"happy distribution", []int{30, 40, 20, 10}, true},
-		{"90%", []int{50, 40}, false},
-		{"No elements ", []int{}, false},
-		{"out of range value 1", []int{101, 2}, false},
-		{"out of range value 2", []int{30, 40, 20, 10, -10, 10}, false},
-		{"zero", []int{0}, false},
-		{"hundred", []int{0, 0, 100}, true},
-		{"hundred", []int{100, 0}, true},
-		{"hundred", []int{100}, true},
-		{"50 50 0", []int{50, 50, 0}, true},
-		{"50 50 0 0", []int{50, 50, 0, 0}, true},
-		{"50 0 50 0", []int{50, 0, 50, 0}, true},
-		{"0 50 0 50", []int{0, 50, 0, 50}, true},
-		{"50 0 0 50", []int{50, 0, 0, 50}, true},
-		{"0 0 50 0 0 50 0 0", []int{0, 0, 50, 0, 0, 50, 0, 0}, true},
-	}
-	for _, test := range tests {
-		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
-			_, err := NewWS(test.pdf)
-			if !test.valid {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
-}
-
 func TestPick(t *testing.T) {
-	const n = 1000
+	const n = 10000
+	const diffPercentage = 3
 	tests := []struct {
-		name              string
-		pdf               []int
-		allowedMaxDiffPct int
+		name               string
+		portions           []uint32
+		valid              bool
+		expectedPercentage []int
 	}{
-		{"happy distribution", []int{30, 40, 20, 10}, 5},
-		{"50/50 distribution ", []int{50, 50}, 5},
-		{"one element ", []int{100}, 0},
-		{"twenty elements", []int{5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}, 3},
-		{"strongly unbalanced", []int{90, 2, 2, 2, 2, 2}, 3},
-		{"strongly unbalanced2", []int{1, 99}, 1},
-		{"one zero", []int{100, 0}, 0},
-		{"multiple zeros", []int{100, 0, 0}, 0},
-		{"multiple zeros", []int{0, 100, 0}, 0},
-		{"multiple zeros", []int{0, 0, 100}, 0},
-		{"50 50 0", []int{50, 50, 0}, 20},
+		{"happy distribution", []uint32{30, 40, 20, 10}, true, []int{30, 40, 20, 10}},
+		{"-", []uint32{}, false, []int{}},
+		{"0", []uint32{0}, false, []int{100}},
+		{"0-0-0-0", []uint32{0, 0, 0, 0}, false, []int{}},
+		{"50-40", []uint32{50, 40}, true, []int{56, 44}},
+		{"50-50", []uint32{50, 50}, true, []int{50, 50}},
+		{"1-1", []uint32{1, 1}, true, []int{50, 50}},
+		{"50-40-50-40", []uint32{50, 40, 50, 40}, true, []int{29, 22, 27, 22}},
+		{"2-1", []uint32{2, 1}, true, []int{66, 33}},
+		{"2-1-1", []uint32{2, 1, 1}, true, []int{50, 25, 25}},
+		{"1-99", []uint32{1, 99}, true, []int{1, 99}},
+		{"1-999 (1)", []uint32{1, 999}, true, []int{0, 99}},
+		{"1-999 (2)", []uint32{1, 999}, true, []int{1, 99}},
+		{"1-0-0-0", []uint32{1, 0, 0, 0}, true, []int{100, 0, 0, 0}},
+		{"0-2-2-0", []uint32{0, 2, 2, 0}, true, []int{0, 50, 50, 0}},
+		{"100-0-0-0", []uint32{100, 0, 0, 0}, true, []int{100, 0, 0, 0}},
+		{"100-0-0-100", []uint32{100, 0, 0, 100}, true, []int{50, 0, 0, 50}},
+		{"900-0-0-100", []uint32{900, 0, 0, 100}, true, []int{90, 0, 0, 10}},
+		{"0-1-2-3-4-5-6-7-8-9", []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, true, []int{0, 2, 4, 6, 8, 11, 13, 15, 17, 20}},
+		{"1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1", []uint32{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, true,
+			[]int{5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}},
 	}
-
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
-			require.NoError(t, err)
-			result := make([]int, len(test.pdf))
+		t.Run(test.name, func(t *testing.T) {
+			x := New(test.portions)
+			result := make([]int, len(test.portions))
 			for i := 0; i < n; i++ {
-				idx := wrr.Pick()
-				assert.True(t, idx >= 0 && idx < len(test.pdf), "Pick returned index out of range")
-				result[idx]++
+				index, err := x.Pick()
+				if err != nil {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+				result[index]++
 			}
-			sum := sum(result)
-			assert.Equal(t, sum, n)
-			b := checkAllowedDiff(test.pdf, result, sum, test.allowedMaxDiffPct)
-			assert.True(t, b, "crossed maximum allowed diff", result)
+			r := n / 100
+			for i := 0; i < len(result); i++ {
+				b := closeTo(result[i], test.expectedPercentage[i]*r, n, 3)
+				require.True(t, b, "portions %v having expected %v is not equal to  calculated %v with %d%% allowed diff",
+					test.portions, test.expectedPercentage, result, diffPercentage)
+			}
 		})
 	}
 }
 
 func TestPickVector(t *testing.T) {
-	const n = 1000
+	const n = 10000
 	tests := []struct {
 		name              string
-		pdf               []int
+		pdf               []uint32
 		allowedMaxDiffPct int
 	}{
-		{"happy distribution", []int{30, 40, 20, 10}, 5},
-		{"50/50 distribution ", []int{50, 50}, 5},
-		{"one element ", []int{100}, 0},
-		{"twenty elements", []int{5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}, 3},
-		{"strongly unbalanced", []int{90, 2, 2, 2, 2, 2}, 2},
-		{"one zero", []int{100, 0}, 0},
-		{"multiple zeros", []int{100, 0, 0}, 0},
-		{"multiple zeros", []int{0, 100, 0}, 0},
-		{"multiple zeros", []int{0, 0, 100}, 0},
-		{"multiple zeros", []int{0, 0, 0, 100, 0, 0}, 0},
-		{"50 50 0", []int{50, 50, 0}, 5},
-		{"50 50 0 0", []int{50, 50, 0, 0}, 5},
-		{"50 0 50 0", []int{50, 0, 50, 0}, 5},
-		{"0 50 0 50", []int{0, 50, 0, 50}, 5},
-		{"50 0 0 50", []int{50, 0, 0, 50}, 5},
-		{"0 0 50 0 0 50 0 0", []int{0, 0, 50, 0, 0, 50, 0, 0}, 5},
+		{"happy distribution", []uint32{30, 40, 20, 10}, 5},
+		{"-", []uint32{}, 5},
+		{"0", []uint32{0}, 5},
+		{"0-0-0-0", []uint32{0, 0, 0, 0}, 5},
+		{"50-50 ", []uint32{50, 50}, 5},
+		{"100 ", []uint32{100}, 0},
+		{"twenty elements", []uint32{5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}, 3},
+		{"strongly unbalanced", []uint32{90, 2, 2, 2, 2, 2}, 2},
+		{"one zero", []uint32{100, 0}, 0},
+		{"multiple zeros", []uint32{100, 0, 0}, 0},
+		{"multiple zeros", []uint32{0, 100, 0}, 0},
+		{"multiple zeros", []uint32{0, 0, 100}, 0},
+		{"multiple zeros", []uint32{0, 0, 0, 100, 0, 0}, 0},
+		{"50 50 0", []uint32{50, 50, 0}, 5},
+		{"50 50 0 0", []uint32{50, 50, 0, 0}, 5},
+		{"50 0 50 0", []uint32{50, 0, 50, 0}, 5},
+		{"0 50 0 50", []uint32{0, 50, 0, 50}, 5},
+		{"50 0 0 50", []uint32{50, 0, 0, 50}, 5},
+		{"3 3 0", []uint32{3, 3, 0}, 5},
+		{"4 4 0 0", []uint32{4, 4, 0, 0}, 5},
+		{"5 0 5 0", []uint32{5, 0, 5, 0}, 5},
+		{"0 60 0 60", []uint32{0, 6, 0, 6}, 5},
+		{"99999 0 0 99999", []uint32{99999, 0, 0, 99999}, 5},
+		{"0 0 50 0 0 50 0 0", []uint32{0, 0, 50, 0, 0, 50, 0, 0}, 5},
+		{"0 0 1 0 0 1 0 0", []uint32{0, 0, 50, 0, 0, 50, 0, 0}, 5},
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
-			require.NoError(t, err)
+			wrr := New(test.pdf)
 
 			result := map[int][]int{}
 			for i := 0; i < len(test.pdf); i++ {
@@ -130,7 +120,7 @@ func TestPickVector(t *testing.T) {
 
 			for i := 0; i < n; i++ {
 
-				indexes := wrr.PickVector(KeepIndexesForZeroPDF)
+				indexes := wrr.PickVector(IncludeZeroWeights)
 				for _, v := range indexes {
 					assert.True(t, v >= 0 && v < len(test.pdf), "Pick returned index out of range")
 				}
@@ -156,32 +146,37 @@ func TestPickVector(t *testing.T) {
 func TestSettings(t *testing.T) {
 	tests := []struct {
 		name                string
-		pdf                 []int
+		pdf                 []uint32
 		expectedIndexValues []int
 		settings            Settings
 	}{
-		{"happy distribution -Ignore", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, IgnoreIndexesForZeroPDF},
-		{"happy distribution - Keep", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, KeepIndexesForZeroPDF},
+		{"happy distribution -Ignore", []uint32{30, 40, 20, 10}, []int{0, 1, 2, 3}, DropZeroWeights},
+		{"happy distribution - Keep", []uint32{30, 40, 20, 10}, []int{0, 1, 2, 3}, IncludeZeroWeights},
 
-		{"one element  - Ignore", []int{100}, []int{0}, 0},
-		{"one element  - Keep", []int{100}, []int{0}, 0},
+		{"0  - Ignore", []uint32{0}, []int{}, DropZeroWeights},
+		{"0  - Keep", []uint32{0}, []int{0}, IncludeZeroWeights},
 
-		{"one zero - Ignore", []int{100, 0}, []int{0}, IgnoreIndexesForZeroPDF},
-		{"one zero - Keep ", []int{100, 0}, []int{0, 1}, KeepIndexesForZeroPDF},
-		{"0 100 0 - Ignore", []int{0, 100, 0}, []int{1}, IgnoreIndexesForZeroPDF},
-		{"0 100 0 - Keep ", []int{0, 100, 0}, []int{0, 1, 2}, KeepIndexesForZeroPDF},
+		{"0-0-0-0  - Ignore", []uint32{0, 0, 0, 0}, []int{}, DropZeroWeights},
+		{"0-0-0-0  - Keep", []uint32{0, 0, 0, 0}, []int{0, 1, 2, 3}, IncludeZeroWeights},
 
-		{"0 50 0 50 - Ignore ", []int{0, 50, 0, 50}, []int{1, 3}, IgnoreIndexesForZeroPDF},
-		{"0 50 0 50 - Keep ", []int{0, 50, 0, 50}, []int{0, 1, 2, 3}, KeepIndexesForZeroPDF},
+		{"100  - Ignore", []uint32{100}, []int{0}, 0},
+		{"100  - Keep", []uint32{100}, []int{0}, 0},
 
-		{"0 0 50 0 0 50 0 0 - Ignore", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, IgnoreIndexesForZeroPDF},
-		{"0 0 50 0 0 50 0 0 - Keep", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, KeepIndexesForZeroPDF},
-		{"invalid strategy", []int{100, 0}, []int{}, 5},
+		{"100 0 - Ignore", []uint32{100, 0}, []int{0}, DropZeroWeights},
+		{"100 0 - Keep ", []uint32{100, 0}, []int{0, 1}, IncludeZeroWeights},
+		{"0 100 0 - Ignore", []uint32{0, 100, 0}, []int{1}, DropZeroWeights},
+		{"0 100 0 - Keep ", []uint32{0, 100, 0}, []int{0, 1, 2}, IncludeZeroWeights},
+
+		{"0 50 0 50 - Ignore ", []uint32{0, 50, 0, 50}, []int{1, 3}, DropZeroWeights},
+		{"0 50 0 50 - Keep ", []uint32{0, 50, 0, 50}, []int{0, 1, 2, 3}, IncludeZeroWeights},
+
+		{"0 0 50 0 0 50 0 0 - Ignore", []uint32{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, DropZeroWeights},
+		{"0 0 50 0 0 50 0 0 - Keep", []uint32{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, IncludeZeroWeights},
+		{"invalid strategy", []uint32{100, 0}, []int{}, 5},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
-			require.NoError(t, err)
+			wrr := New(test.pdf)
 			for x := 0; x < 2; x++ {
 				indexes := wrr.PickVector(test.settings)
 				assert.True(t, containsValues(indexes, test.expectedIndexValues), "%v %v", indexes, test.expectedIndexValues)
@@ -193,82 +188,81 @@ func TestSettings(t *testing.T) {
 func TestIsShuffling(t *testing.T) {
 	tests := []struct {
 		name              string
-		pdf               []int
+		pdf               []uint32
 		same              [][]int
 		maxDiffPercentage int
 		settings          Settings
 	}{
 		{"50-50",
-			[]int{50, 50},
+			[]uint32{50, 50},
 			[][]int{{0, 1}, {1, 0}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"33-33-34",
-			[]int{33, 33, 34},
+			[]uint32{33, 33, 34},
 			[][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 1, 0}, {2, 0, 1}},
 			25,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-100",
-			[]int{0, 100},
+			[]uint32{0, 100},
 			[][]int{{1, 0}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"100-0-0",
-			[]int{100, 0, 0},
+			[]uint32{100, 0, 0},
 			[][]int{{0, 1, 2}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-0-100",
-			[]int{0, 0, 100},
+			[]uint32{0, 0, 100},
 			[][]int{{2, 0, 1}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-0-100-0",
-			[]int{0, 0, 100, 0},
+			[]uint32{0, 0, 100, 0},
 			[][]int{{2, 0, 1, 3}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-50-50",
-			[]int{0, 50, 50},
+			[]uint32{0, 50, 50},
 			[][]int{{2, 1, 0}, {1, 2, 0}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"50-0-50",
-			[]int{50, 0, 50},
+			[]uint32{50, 0, 50},
 			[][]int{{2, 0, 1}, {0, 2, 1}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"50-50-0",
-			[]int{50, 50, 0},
+			[]uint32{50, 50, 0},
 			[][]int{{0, 1, 2}, {1, 0, 2}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-50-0-50-0",
-			[]int{0, 50, 0, 50, 0},
+			[]uint32{0, 50, 0, 50, 0},
 			[][]int{{1, 3, 0, 2, 4}, {3, 1, 0, 2, 4}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"50-50-0-50-0",
-			[]int{33, 33, 0, 34, 0},
+			[]uint32{33, 33, 0, 34, 0},
 			[][]int{{1, 3, 0, 2, 4}, {1, 0, 3, 2, 4}, {0, 1, 3, 2, 4}, {0, 3, 1, 2, 4}, {3, 0, 1, 2, 4}, {3, 1, 0, 2, 4}},
 			25,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
-			require.NoError(t, err)
+			wrr := New(test.pdf)
 			counters := make([]int, len(test.same))
 			for i := 0; i < 1000; i++ {
 				succeed := false
@@ -295,37 +289,36 @@ func TestIsShufflingAsymetric(t *testing.T) {
 	const n = 1000
 	tests := []struct {
 		name               string
-		pdf                []int
+		pdf                []uint32
 		expectedHits       []int
 		maxDiffPercentages int
 		settings           Settings
 	}{
 		{
 			"10-90",
-			[]int{10, 90},
+			[]uint32{10, 90},
 			[]int{100, 900},
 			3,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{
 			"90-5-5",
-			[]int{90, 5, 5},
+			[]uint32{90, 5, 5},
 			[]int{900, 50, 50},
 			3,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{
 			"30-10-60",
-			[]int{30, 10, 60},
+			[]uint32{30, 10, 60},
 			[]int{300, 100, 600},
 			3,
-			IgnoreIndexesForZeroPDF,
+			DropZeroWeights,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
-			require.NoError(t, err)
+			wrr := New(test.pdf)
 			counters := make([]int, len(test.pdf))
 			for i := 0; i < n; i++ {
 				indexes := wrr.PickVector(test.settings)
@@ -401,23 +394,9 @@ func sum(result []int) (sum int) {
 	return sum
 }
 
-// checks if result is in allowed diff ±diffPercent%
-func checkAllowedDiff(pdf, result []int, sum int, diffPercent int) bool {
-	for i, p := range pdf {
-		var pct = float64(p) / 100
-		var diff = (float64(diffPercent) / 100) * float64(sum)
-		var base = pct * float64(sum)
-
-		if float64(result[i]) > base+diff || float64(result[i]) < base-diff {
-			return false
-		}
-	}
-	return true
-}
-
 //func TestPrintMatrix(t *testing.T) {
 //	pdf := []int{50,50}
-//	wrr, err := NewWS(pdf)
+//	wrr, err := New(pdf)
 //	if err != nil {
 //		fmt.Println("ERROR:", err)
 //		return
