@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInit(t *testing.T) {
+func TestInitFromPDF(t *testing.T) {
 	tests := []struct {
 		name  string
 		pdf   []int
@@ -46,12 +46,48 @@ func TestInit(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
-			_, err := NewWS(test.pdf)
+			_, err := NewFromPDF(test.pdf)
 			if !test.valid {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestInitFromPortions(t *testing.T) {
+	tests := []struct {
+		name     string
+		portions []int
+		valid    bool
+		pdf      []int
+	}{
+		{"happy distribution", []int{30, 40, 20, 10}, true, []int{30, 40, 20, 10}},
+		{"No elements ", []int{}, false, []int{}},
+		{"50-40", []int{50, 40}, true, []int{56, 44}},
+		{"50-40-50-40", []int{50, 40, 50, 40}, true, []int{29, 22, 27, 22}},
+		{"100-0-0-0", []int{100, 0, 0, 0}, true, []int{100, 0, 0, 0}},
+		{"100-0-0-100", []int{100, 0, 0, 100}, true, []int{50, 0, 0, 50}},
+		{"900-0-0-100", []int{900, 0, 0, 100}, true, []int{90, 0, 0, 10}},
+		{"0-0-0-0", []int{0, 0, 0, 0}, false, []int{}},
+		{"0", []int{0}, false, []int{}},
+		{"5--1-5", []int{5, -1, 5}, false, []int{}},
+		{"0-1-2-3-4-5-6-7-8-9", []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, true, []int{0, 6, 4, 6, 8, 11, 13, 15, 17, 20}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			x, err := NewFromPortions(test.portions)
+			if !test.valid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			var calculatedPDF []int
+			for _, v := range x.pdf {
+				calculatedPDF = append(calculatedPDF, v.percentage)
+			}
+			assert.True(t, same(test.pdf, calculatedPDF), "expected %v is not equal to  calculated %v", test.pdf, calculatedPDF)
 		})
 	}
 }
@@ -78,7 +114,7 @@ func TestPick(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
+			wrr, err := NewFromPDF(test.pdf)
 			require.NoError(t, err)
 			result := make([]int, len(test.pdf))
 			for i := 0; i < n; i++ {
@@ -120,7 +156,7 @@ func TestPickVector(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("%s: %v", test.name, test.pdf), func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
+			wrr, err := NewFromPDF(test.pdf)
 			require.NoError(t, err)
 
 			result := map[int][]int{}
@@ -130,7 +166,7 @@ func TestPickVector(t *testing.T) {
 
 			for i := 0; i < n; i++ {
 
-				indexes := wrr.PickVector(KeepIndexesForZeroPDF)
+				indexes := wrr.PickVector(IncludeZeroWeights)
 				for _, v := range indexes {
 					assert.True(t, v >= 0 && v < len(test.pdf), "Pick returned index out of range")
 				}
@@ -160,27 +196,27 @@ func TestSettings(t *testing.T) {
 		expectedIndexValues []int
 		settings            Settings
 	}{
-		{"happy distribution -Ignore", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, IgnoreIndexesForZeroPDF},
-		{"happy distribution - Keep", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, KeepIndexesForZeroPDF},
+		{"happy distribution -Ignore", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, DropZeroWeights},
+		{"happy distribution - Keep", []int{30, 40, 20, 10}, []int{0, 1, 2, 3}, IncludeZeroWeights},
 
 		{"one element  - Ignore", []int{100}, []int{0}, 0},
 		{"one element  - Keep", []int{100}, []int{0}, 0},
 
-		{"one zero - Ignore", []int{100, 0}, []int{0}, IgnoreIndexesForZeroPDF},
-		{"one zero - Keep ", []int{100, 0}, []int{0, 1}, KeepIndexesForZeroPDF},
-		{"0 100 0 - Ignore", []int{0, 100, 0}, []int{1}, IgnoreIndexesForZeroPDF},
-		{"0 100 0 - Keep ", []int{0, 100, 0}, []int{0, 1, 2}, KeepIndexesForZeroPDF},
+		{"one zero - Ignore", []int{100, 0}, []int{0}, DropZeroWeights},
+		{"one zero - Keep ", []int{100, 0}, []int{0, 1}, IncludeZeroWeights},
+		{"0 100 0 - Ignore", []int{0, 100, 0}, []int{1}, DropZeroWeights},
+		{"0 100 0 - Keep ", []int{0, 100, 0}, []int{0, 1, 2}, IncludeZeroWeights},
 
-		{"0 50 0 50 - Ignore ", []int{0, 50, 0, 50}, []int{1, 3}, IgnoreIndexesForZeroPDF},
-		{"0 50 0 50 - Keep ", []int{0, 50, 0, 50}, []int{0, 1, 2, 3}, KeepIndexesForZeroPDF},
+		{"0 50 0 50 - Ignore ", []int{0, 50, 0, 50}, []int{1, 3}, DropZeroWeights},
+		{"0 50 0 50 - Keep ", []int{0, 50, 0, 50}, []int{0, 1, 2, 3}, IncludeZeroWeights},
 
-		{"0 0 50 0 0 50 0 0 - Ignore", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, IgnoreIndexesForZeroPDF},
-		{"0 0 50 0 0 50 0 0 - Keep", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, KeepIndexesForZeroPDF},
+		{"0 0 50 0 0 50 0 0 - Ignore", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{2, 5}, DropZeroWeights},
+		{"0 0 50 0 0 50 0 0 - Keep", []int{0, 0, 50, 0, 0, 50, 0, 0}, []int{0, 1, 2, 3, 4, 5, 6, 7}, IncludeZeroWeights},
 		{"invalid strategy", []int{100, 0}, []int{}, 5},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
+			wrr, err := NewFromPDF(test.pdf)
 			require.NoError(t, err)
 			for x := 0; x < 2; x++ {
 				indexes := wrr.PickVector(test.settings)
@@ -202,72 +238,72 @@ func TestIsShuffling(t *testing.T) {
 			[]int{50, 50},
 			[][]int{{0, 1}, {1, 0}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"33-33-34",
 			[]int{33, 33, 34},
 			[][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 1, 0}, {2, 0, 1}},
 			25,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-100",
 			[]int{0, 100},
 			[][]int{{1, 0}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"100-0-0",
 			[]int{100, 0, 0},
 			[][]int{{0, 1, 2}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-0-100",
 			[]int{0, 0, 100},
 			[][]int{{2, 0, 1}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-0-100-0",
 			[]int{0, 0, 100, 0},
 			[][]int{{2, 0, 1, 3}},
 			0,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-50-50",
 			[]int{0, 50, 50},
 			[][]int{{2, 1, 0}, {1, 2, 0}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"50-0-50",
 			[]int{50, 0, 50},
 			[][]int{{2, 0, 1}, {0, 2, 1}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"50-50-0",
 			[]int{50, 50, 0},
 			[][]int{{0, 1, 2}, {1, 0, 2}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"0-50-0-50-0",
 			[]int{0, 50, 0, 50, 0},
 			[][]int{{1, 3, 0, 2, 4}, {3, 1, 0, 2, 4}},
 			10,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{"50-50-0-50-0",
 			[]int{33, 33, 0, 34, 0},
 			[][]int{{1, 3, 0, 2, 4}, {1, 0, 3, 2, 4}, {0, 1, 3, 2, 4}, {0, 3, 1, 2, 4}, {3, 0, 1, 2, 4}, {3, 1, 0, 2, 4}},
 			25,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
+			wrr, err := NewFromPDF(test.pdf)
 			require.NoError(t, err)
 			counters := make([]int, len(test.same))
 			for i := 0; i < 1000; i++ {
@@ -305,26 +341,26 @@ func TestIsShufflingAsymetric(t *testing.T) {
 			[]int{10, 90},
 			[]int{100, 900},
 			3,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{
 			"90-5-5",
 			[]int{90, 5, 5},
 			[]int{900, 50, 50},
 			3,
-			KeepIndexesForZeroPDF,
+			IncludeZeroWeights,
 		},
 		{
 			"30-10-60",
 			[]int{30, 10, 60},
 			[]int{300, 100, 600},
 			3,
-			IgnoreIndexesForZeroPDF,
+			DropZeroWeights,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			wrr, err := NewWS(test.pdf)
+			wrr, err := NewFromPDF(test.pdf)
 			require.NoError(t, err)
 			counters := make([]int, len(test.pdf))
 			for i := 0; i < n; i++ {
@@ -417,7 +453,7 @@ func checkAllowedDiff(pdf, result []int, sum int, diffPercent int) bool {
 
 //func TestPrintMatrix(t *testing.T) {
 //	pdf := []int{50,50}
-//	wrr, err := NewWS(pdf)
+//	wrr, err := NewFromPDF(pdf)
 //	if err != nil {
 //		fmt.Println("ERROR:", err)
 //		return

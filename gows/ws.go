@@ -35,17 +35,47 @@ type touples []struct {
 type Settings int
 
 const (
-	// KeepIndexesForZeroPDF keeps indexes for zero pdf elements.
+	// IncludeZeroWeights keeps indexes for zero pdf elements.
 	// e.g: for pdf=[0,50,50,0,0,0] may return [1,2,0,3,4,5] or [2,1,0,3,4,5]
-	KeepIndexesForZeroPDF Settings = iota
+	IncludeZeroWeights Settings = iota
 
-	// IgnoreIndexesForZeroPDF filter indexes for zero pdf elements.
+	// DropZeroWeights filter indexes for zero pdf elements.
 	// e.g: for pdf=[0,50,50,0,0,0] may return [1,2] or [2,1]
-	IgnoreIndexesForZeroPDF
+	DropZeroWeights
 )
 
-// NewWS instantiate weight round robin
-func NewWS(pdf []int) (wrr *WS, err error) {
+// NewFromPortions instantiate weight round-robin from portions.
+// Individual portions are automatically recalculated into pdf.
+func NewFromPortions(portions []int) (wrr *WS, err error) {
+	total := 0
+	rest := 0
+	pdf := make([]int, 0)
+	for _, v := range portions {
+		if v < 0 {
+			return wrr, fmt.Errorf("value %v must be lower than zero", v)
+		}
+		total += v
+	}
+
+	for _, v := range portions {
+		p := (float64(v) / float64(total)) * 100
+		rest += int(p)
+		pdf = append(pdf, int(p))
+	}
+
+	rest = 100 - rest
+	for i := 0; i < len(pdf); i++ {
+		if pdf[i] > 0 {
+			pdf[i] += rest
+			break
+		}
+	}
+	return NewFromPDF(pdf)
+}
+
+// NewFromPDF instantiate weight round-robin from pdf
+// the sum of all probabilities must be equal to 100
+func NewFromPDF(pdf []int) (wrr *WS, err error) {
 	r := 0
 	wrr = new(WS)
 	for i, v := range pdf {
@@ -128,9 +158,9 @@ func (w *WS) indexes(settings Settings, calculatedIndexes []int) (indexes []int)
 	indexes = w.toPDFIndexes(calculatedIndexes)
 
 	switch settings {
-	case IgnoreIndexesForZeroPDF:
+	case DropZeroWeights:
 		return indexes
-	case KeepIndexesForZeroPDF:
+	case IncludeZeroWeights:
 		for i := 0; i < len(w.pdf); i++ {
 			apnd := true
 			for _, v := range calculatedIndexes {
