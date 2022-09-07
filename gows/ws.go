@@ -24,49 +24,47 @@ import (
 type WS struct {
 	pdf                         touples
 	filteredPDFFromZeroElements touples
+	balance                     int
 }
 
 type touples []struct {
-	index      int
-	percentage int
+	index int
+	value int
 }
 
 //The Settings argument defines how the PickVector function will return indexes
 type Settings int
 
 const (
-	// KeepIndexesForZeroPDF keeps indexes for zero pdf elements.
+	// IncludeZeroWeights keeps indexes for zero pdf elements.
 	// e.g: for pdf=[0,50,50,0,0,0] may return [1,2,0,3,4,5] or [2,1,0,3,4,5]
-	KeepIndexesForZeroPDF Settings = iota
+	IncludeZeroWeights Settings = iota
 
-	// IgnoreIndexesForZeroPDF filter indexes for zero pdf elements.
+	// DropZeroWeights filter indexes for zero pdf elements.
 	// e.g: for pdf=[0,50,50,0,0,0] may return [1,2] or [2,1]
-	IgnoreIndexesForZeroPDF
+	DropZeroWeights
 )
 
-// NewWS instantiate weight round robin
-func NewWS(pdf []int) (wrr *WS, err error) {
-	r := 0
+// New instantiate weight round-robin from portions PDF which is not necessarily 100%.
+// The probability of occurrence of the index is calculated according to the weights
+// of the individual elements in the PDF. If you have 30,10,20,40 or 3,1,2,4, the
+// result will be the same
+func New(pdf []uint32) (wrr *WS) {
+	rand.Seed(time.Now().UnixNano())
 	wrr = new(WS)
+	wrr.pdf = make(touples, 0)
 	for i, v := range pdf {
-		r += v
-		if v < 0 || v > 100 {
-			return wrr, fmt.Errorf("value %v out of range [0;100]", v)
-		}
+		wrr.balance += int(v)
 		t := struct {
-			index      int
-			percentage int
-		}{i, v}
+			index int
+			value int
+		}{index: i, value: int(v)}
 		if v != 0 {
 			wrr.filteredPDFFromZeroElements = append(wrr.filteredPDFFromZeroElements, t)
 		}
 		wrr.pdf = append(wrr.pdf, t)
 	}
-	if r != 100 {
-		return wrr, fmt.Errorf("sum of pdf elements must be equal to 100 perent")
-	}
-	rand.Seed(time.Now().UnixNano())
-	return wrr, nil
+	return wrr
 }
 
 // PickVector returns slice shuffled by pdf distribution.
@@ -76,30 +74,33 @@ func NewWS(pdf []int) (wrr *WS, err error) {
 func (w *WS) PickVector(settings Settings) (indexes []int) {
 	pdf := make(touples, len(w.filteredPDFFromZeroElements))
 	copy(pdf, w.filteredPDFFromZeroElements)
-	balance := 100
+	balance := w.balance
 	for i := 0; i < len(pdf); i++ {
 		cdf := w.getCDF(pdf)
 		index := w.pick(cdf, balance)
 		indexes = append(indexes, index)
 
-		balance -= pdf[index].percentage
-		pdf[index].percentage = 0
+		balance -= pdf[index].value
+		pdf[index].value = 0
 	}
 	return w.indexes(settings, indexes)
 }
 
 // Pick returns one index with probability given by pdf
 // see README.md
-func (w *WS) Pick() int {
+func (w *WS) Pick() (int, error) {
+	if w.balance == 0 {
+		return -1, fmt.Errorf("no index found for empty or zero-filled pdf ")
+	}
 	cdf := w.getCDF(w.pdf)
-	return w.pick(cdf, 100)
+	return w.pick(cdf, w.balance), nil
 }
 
 // pick one index
 func (w *WS) pick(cdf touples, n int) int {
 	r := rand.Intn(n)
 	index := 0
-	for r >= cdf[index].percentage {
+	for r >= cdf[index].value {
 		index++
 	}
 	return index
@@ -109,13 +110,13 @@ func (w *WS) getCDF(pdf touples) (cdf touples) {
 	// prepare cdf
 	for i := 0; i < len(pdf); i++ {
 		cdf = append(cdf, struct {
-			index      int
-			percentage int
-		}{index: 0, percentage: 0})
+			index int
+			value int
+		}{index: 0, value: 0})
 	}
 	cdf[0] = pdf[0]
 	for i := 1; i < len(pdf); i++ {
-		cdf[i].percentage = cdf[i-1].percentage + pdf[i].percentage
+		cdf[i].value = cdf[i-1].value + pdf[i].value
 	}
 	return cdf
 }
@@ -128,9 +129,9 @@ func (w *WS) indexes(settings Settings, calculatedIndexes []int) (indexes []int)
 	indexes = w.toPDFIndexes(calculatedIndexes)
 
 	switch settings {
-	case IgnoreIndexesForZeroPDF:
+	case DropZeroWeights:
 		return indexes
-	case KeepIndexesForZeroPDF:
+	case IncludeZeroWeights:
 		for i := 0; i < len(w.pdf); i++ {
 			apnd := true
 			for _, v := range calculatedIndexes {
