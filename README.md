@@ -50,6 +50,9 @@ The usage is simple, the package defines two methods:
 - `PickVector()` returning all indexes in such order that the ones with the highest weight appears at 
 the beginning of the returned slice, while the ones with the lowest weight appear at the end.
 
+![](https://user-images.githubusercontent.com/7195836/189152064-6e105001-75c1-4381-9089-5d1be556c324.png)
+
+
 ## Pick() Usage
 Pick returns single index with probability given by weights.
 ```go
@@ -89,7 +92,7 @@ The function returns an index slice such that index 0 will be represented in the
 index 1 will be in the first position in about 40% of cases, etc. Similarly, there are heavier weights in the second position. 
 The last position belongs mostly to the low weights. 
 
-### PickVector settings argument
+### Settings argument
 The Settings argument defines how the PickVector function will return indexes. Imagine you have 
 a weights for three different parts and you set one of them to 0 (just turn it off, because the 
 probability of this index will be 0). The solution is not universal, each use-case requires 
@@ -109,8 +112,8 @@ of addresses):
 10.3.0.1
 ```
 
-We want to shuffle the addresses for weights `[30 40 20 10]`: The item with the highest probability (index 01 = 40%) will
-occur more often at the 01 position that has the highest weight.
+We want to shuffle the addresses for weights `[30 40 20 10]`: The item with the highest probability (index 1 = 40%) will
+occur more often at the 0 position.
 
 ```txt
  IP:      [10.0.0.1, 10.1.0.1, 10.2.0.1, 10.3.0.1]
