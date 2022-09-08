@@ -87,7 +87,7 @@ func (w *WS) PickVector(settings Settings) (indexes []int) {
 }
 
 // Pick returns one index with probability given by pdf
-// see README.md
+// If all weights are zero or empty, it generates an error.
 func (w *WS) Pick() (int, error) {
 	if w.balance == 0 {
 		return -1, fmt.Errorf("no index found for empty or zero-filled pdf ")

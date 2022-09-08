@@ -15,6 +15,7 @@ For detailed information about the concept, you should take a look at the follow
 
 ## Table of Content
 - [Install](#install)
+- [Introduction](#introduction)
 - [Pick() Usage](#pick-usage)
 - [PickVector() Usage](#pickvector-usage)
 - [Examples](#examples)
@@ -25,55 +26,77 @@ With a correctly configured Go environment:
 go get github.com/k8gb-io/go-weight-shuffling
 ```
 
-## Pick() Usage
+## Introduction
+Use this package in case you need to select elements or balance the load with certain probability.Basically the only 
+thing you need to understand is PDF distribution. The PDF - or weights - determines with what probability the individual 
+elements in the array will be selected.
 
+For example, I have a slice with these IP addresses:
 ```go
-// pdf requires to be 100% in total.  
-pdf := []int{30, 40, 20, 10}
-// handle error in real code
-ws, _ := gows.NewWS(pdf)
-// the index is selected from the probability determined by the pdf 
-index := ws.Pick()
+ips := []string{"10.1.0.1","10.2.0.1","10.3.0.1","10.4.0.1"}
 ```
-If you don't remember [the probability](https://www.statology.org/cdf-vs-pdf/) right now, that's okay.
-PDF is a simple slice that contains percentages. Depending on how the percentages are divided, the function will
-return an index. For example, for PDF={5,90,5}, the function will return 1 in about 90 out of 100 cases,
-while it will return 0 or 2 in about 10 out of 100 cases.
+I would like to pick the indexes of these addresses with a certain probability, therefore
+I'm defining `weights := {3,4,2,1}` to determine such probabilities. The chance of selecting the first index 
+(address `10.1.0.1`) is 30%, the chance of selecting the second index (`10.2.0.1`) is 40%, etc. 
+So the final probability is: `{0:30%, 1:40%, 2:20%, 3:10%}`
 
-**The only condition is that the sum of all values in the PDF is always equal to 100!**
+For some reason I decide I don't want to select `10.3.0.1` anymore. Therefore, I set the weight in the 
+pdf to 0 for the element I no longer want to use `weights := {3,4,0,1}`. The probabilities are automatically 
+recalculated and the returned indexes will be returned with probabilities `{0:38%,1:50%, 2:0%, 3:12%}`
+value `2` (index of `10.3.0.1`) is dropped.
+
+The usage is simple, the package defines two methods: 
+- `Pick()` returning one index
+- `PickVector()` returning all indexes in such order that the ones with the highest weight appears at 
+the beginning of the returned slice, while the ones with the lowest weight appear at the end.
+
+## Pick() Usage
+Pick returns single index with probability given by weights.
+```go
+weights := []uint32{30, 40, 20, 10}
+// handle error in real code
+w := gows.NewWS(weights)
+// the index is selected from the probability determined by the weight 
+index,_ := w.Pick()
+```
+If the sum of the weights is equal to zero the function generates an error (there is no index to choose from if everything is 0)
 
 ## PickVector(Settings) Usage
-
+PickVector returns slice shuffled by weights distribution. returning all indexes in such order that the ones with the 
+highest weight appears at the beginning of the returned slice, while the ones with the lowest weight appear at the end.
 ```go
-// pdf requires to be 100% in total.  
-pdf := []int{30, 40, 20, 10}
+weights := []int{30, 40, 20, 10}
 // handle error in real code
-ws, _ := gows.NewWS(pdf)
+ws := gows.NewWS(weights)
 // the result will be slices of the index, which will be "probably" sorted by probability
-indexes := wrr.PickVector(gows.KeepIndexesForZeroPDF)
+indexes := wrr.PickVector(gows.IncludeZeroWeights)
 ```
 
-A bit more complex case is when you need to shuffle the indexes in the array to match the PDF instead of one element.
-The PDF again contains the same percentage distribution, but we want the slice to contain not one index, but the whole
-vector. For example, for `PDF={30,40,20,10}` the result will be like this:
-
+For example: `weights={30,40,20,10}` will produce such results:
 ```
-[2,1,3,0]
+[1,2,3,0]
 [0,1,3,2]
 [0,1,2,3]
+[1,0,2,3]
+[1,3,0,2]
+[0,3,2,1]
+[1,0,2,3]
+[2,1,0,3]
+[3,0,1,2]
 ...
 ```
-the function returns an index slice such that index0 will be represented in the zero position in about 30% of cases,
-index1 will be in the first position in about 40% of cases, etc.
+The function returns an index slice such that index 0 will be represented in the zero position in about 30% of cases,
+index 1 will be in the first position in about 40% of cases, etc. Similarly, there are heavier weights in the second position. 
+The last position belongs mostly to the low weights. 
 
 ### PickVector settings argument
 The Settings argument defines how the PickVector function will return indexes. Imagine you have 
-a PDF for three different parts and you set one of them to 0 (just turn it off, because the 
+a weights for three different parts and you set one of them to 0 (just turn it off, because the 
 probability of this index will be 0). The solution is not universal, each use-case requires 
 different behavior. Currently we define two versions of the behavior.
 
-- `KeepIndexesForZeroPDF` keeps indexes for zero pdf elements; e.g: for `pdf=[0,50,50,0,0,0]` returns `[1,2,0,3,4,5]` or `[2,1,0,3,4,5]`
-- `IgnoreIndexesForZeroPDF` filter indexes for zero pdf elements; e.g: for `pdf=[0,50,50,0,0,0]` returns `[1,2]` or `[2,1]`
+- `IncludeZeroWeights` keeps indexes for zero weight; e.g: for `weights=[0,50,50,0,0,0]` returns only `[1,2,0,3,4,5]` or `[2,1,0,3,4,5]`
+- `DropZeroWeights` filter indexes for zero weight; e.g: for `weights=[0,50,50,0,0,0]` returns only `[1,2]` or `[2,1]`
 
 ## Examples
 This library is ideal for Weight RoundRobin. Imagine you need to balance these addresses (can be applied to whole groups
@@ -86,12 +109,12 @@ of addresses):
 10.3.0.1
 ```
 
-We want to shuffle the addresses in PDF order `[30 40 20 10]`: The item with the highest probability (index 01 = 40%) will
-occur more often at the 01 position that has the highest probability in the PDF.
+We want to shuffle the addresses for weights `[30 40 20 10]`: The item with the highest probability (index 01 = 40%) will
+occur more often at the 01 position that has the highest weight.
 
 ```txt
- IP:  [10.0.0.1, 10.1.0.1, 10.2.0.1, 10.3.0.1]
- PDF: [30 40 20 10]
+ IP:      [10.0.0.1, 10.1.0.1, 10.2.0.1, 10.3.0.1]
+ WEIGHTS: [30 40 20 10]
     -----------------
  0. [289 401 200 110] 
  1. [298 315 258 129] 
@@ -111,9 +134,9 @@ The index was calculated 1000 times. When you sum individual columns or rows, th
 is  mathematically OK. Let me add a few more examples.
 
 #### 100%
-Let's say we set `pdf={0,0,100,0}` (the sum of PDF must always be 100!).
-The `PickVecor` function will always generate this indexes: `[2 1 0 3]`, so for our IP addresses they will always be
-sorted like this: `[10.2.0.1,10.1.0.1,10.0.0.1,10.3.0.1]`.  This is the result matrix
+Let's say we set `weight={0,0,1,0}`. The `PickVecor` function will always generate this indexes: `[2 1 0 3]`, 
+so for our IP addresses they will always be sorted like this: `[10.2.0.1,10.1.0.1,10.0.0.1,10.3.0.1]`.  
+This is the result matrix
 ```
     [10.0.0.1],[10.1.0.1],[10.2.0.1],[10.3.0.1]
     [0 0 100 0]
@@ -125,7 +148,7 @@ sorted like this: `[10.2.0.1,10.1.0.1,10.0.0.1,10.3.0.1]`.  This is the result m
 ```
 
 #### 50% / 50%
-the last case is a bit redundant, although very explanatory. Let's say we have `pdf={50,50}`.
+the last case is a bit redundant, although very explanatory. Let's say we have `weight={1,1}`.
 The generated sample will look like following:
 ```
 [0 1]
@@ -144,4 +167,4 @@ The generated sample will look like following:
  0. [511 489] 
  1. [489 511] 
 ```
-The address `10.0.0.1` occurred 511 times in `1000` hits at index zero , while 489 times at index 1.
+The address `10.0.0.1` occurred 511 times in `1000` hits at index 0 , while 489 times at index 1.
